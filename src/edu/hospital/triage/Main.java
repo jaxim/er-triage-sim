@@ -2,6 +2,7 @@ package edu.hospital.triage;
 
 import edu.hospital.triage.db.DatabaseManager;
 import edu.hospital.triage.engine.SimulationEngine;
+import edu.hospital.triage.gui.AdminLoginDialog;
 import edu.hospital.triage.gui.ERDashboard;
 
 import javax.swing.SwingUtilities;
@@ -22,12 +23,21 @@ public final class Main {
 
     public static void main(String[] args) {
         DatabaseManager db = new DatabaseManager("er_triage.db");
+        db.initializeDefaultAdmin();
+
         SimulationEngine engine = new SimulationEngine(db);
         engine.hireDefaultStaff();
 
         Runtime.getRuntime().addShutdownHook(new Thread(engine::shutdown));
 
         SwingUtilities.invokeLater(() -> {
+            AdminLoginDialog loginDialog = new AdminLoginDialog(db);
+            boolean authenticated = loginDialog.authenticate();
+            if (!authenticated) {
+                System.exit(0);
+                return;
+            }
+
             ERDashboard dashboard = new ERDashboard(engine);
             dashboard.setVisible(true);
 

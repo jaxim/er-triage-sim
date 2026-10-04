@@ -59,11 +59,49 @@ public class SimulationEngine {
         Nurse n2 = new Nurse("Nurse Tom Iwu");
         for (MedicalStaff s : List.of(d1, d2, n1, n2)) {
             s.login("1234"); // authenticate badges for HIPAA-gated getters
+            db.upsertStaffRecord(s);
         }
         doctors.add(d1);
         doctors.add(d2);
         nurses.add(n1);
         nurses.add(n2);
+    }
+
+    public void addStaffFromAdmin(String name, String role, String specialty) {
+        if (name == null || name.isBlank()) {
+            return;
+        }
+        MedicalStaff staff;
+        if ("Doctor".equalsIgnoreCase(role)) {
+            staff = new Doctor(name, specialty == null || specialty.isBlank() ? "General Medicine" : specialty);
+            doctors.add((Doctor) staff);
+        } else {
+            staff = new Nurse(name);
+            nurses.add((Nurse) staff);
+        }
+        staff.login("1234");
+        db.upsertStaffRecord(staff);
+        db.addAuditEvent("New staff added: " + name + " (" + role + ")");
+        refreshCallback.run();
+    }
+
+    public void reloadStaffFromDatabase() {
+        doctors.clear();
+        nurses.clear();
+        for (String row : db.listStaffMembers()) {
+            String[] fields = row.split(" \\| ");
+            if (fields.length < 4) continue;
+            String name = fields[1].trim();
+            String role = fields[2].trim();
+            if ("AttendingPhysician".equalsIgnoreCase(role) || "Doctor".equalsIgnoreCase(role)) {
+                doctors.add(new Doctor(name, fields[3].trim()));
+            } else if ("TriageNurse".equalsIgnoreCase(role) || "Nurse".equalsIgnoreCase(role)) {
+                nurses.add(new Nurse(name));
+            }
+        }
+        if (doctors.isEmpty() && nurses.isEmpty()) {
+            hireDefaultStaff();
+        }
     }
 
     /* ------------------------------------------------------------------ */
@@ -79,6 +117,7 @@ public class SimulationEngine {
         int severity = triageNurse.assessSeverity(p);
 
         db.insertAdmission(p);
+        db.addAuditEvent("Admission recorded: " + p.getPatientId() + " - " + name);
 
         if (severity >= 9) {
             // Straight to critical care — never enters the standard queue.
@@ -134,6 +173,7 @@ public class SimulationEngine {
             String treatment = doctor.prescribeTreatment(p);
             log("CODE BLUE response by " + doctor.getName() + ": " + treatment);
             db.recordTreatment(p, doctor, treatment);
+            db.upsertPatientRecord(p);
             releaseDoctor(doctor);
         } else {
             log("CODE BLUE: no physician free for " + p.getPatientId() + " — queued for ICU team");
@@ -188,6 +228,7 @@ public class SimulationEngine {
         p.transitionTo(PatientState.STABILIZING);
         String treatment = doctor.prescribeTreatment(p);
         db.recordTreatment(p, doctor, treatment);
+        db.upsertPatientRecord(p);
 
         String outcome;
         if (p.getSeverityScore() <= 2) {
@@ -234,6 +275,7 @@ public class SimulationEngine {
         }
         String treatment = doctor.prescribeTreatment(p);
         db.recordTreatment(p, doctor, treatment);
+        db.upsertPatientRecord(p);
         String outcome;
         if (p.getSeverityScore() <= 3) {
             criticalCare.remove(p);

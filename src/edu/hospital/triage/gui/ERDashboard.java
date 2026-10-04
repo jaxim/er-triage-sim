@@ -145,6 +145,7 @@ public class ERDashboard extends JFrame {
         JButton roundsBtn = new JButton("Nurse: Monitor Vitals (Rounds)");
         JButton icuBtn = new JButton("ICU: Treat Critical Patient");
         JButton reportBtn = new JButton("End-of-Shift Report");
+        JButton adminBtn = new JButton("Admin Panel");
 
         treatBtn.addActionListener(e -> appendLog(engine.treatNextPatient()));
         roundsBtn.addActionListener(e -> appendLog(engine.nurseRounds()));
@@ -152,11 +153,16 @@ public class ERDashboard extends JFrame {
         reportBtn.addActionListener(e ->
                 JOptionPane.showMessageDialog(this, engine.getDb().endOfShiftReport(),
                         "End-of-Shift Report", JOptionPane.INFORMATION_MESSAGE));
+        adminBtn.addActionListener(e -> {
+            AdminPanel adminPanel = new AdminPanel(engine);
+            adminPanel.setVisible(true);
+        });
 
         controls.add(treatBtn);
         controls.add(roundsBtn);
         controls.add(icuBtn);
         controls.add(reportBtn);
+        controls.add(adminBtn);
 
         eventLog.setEditable(false);
         eventLog.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
