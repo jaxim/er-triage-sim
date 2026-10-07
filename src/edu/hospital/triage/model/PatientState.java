@@ -37,9 +37,11 @@ public enum PatientState {
             case STABILIZING:
                 return next == DISCHARGED || next == CRITICAL_CARE || next == WAITING;
             case CRITICAL_CARE:
-                return next == STABILIZING || next == DISCHARGED || next == DECEASED;
+                return next == STABILIZING || next == WAITING || next == DISCHARGED || next == DECEASED;
+            case DISCHARGED:
+                return next == WAITING;
             default:
-                return false; // DISCHARGED / DECEASED are terminal states
+                return false; // DECEASED is terminal
         }
     }
 }

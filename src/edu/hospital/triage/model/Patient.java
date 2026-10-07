@@ -20,10 +20,10 @@ public class Patient implements Comparable<Patient> {
     public static final int CARDIAC_ARREST_THRESHOLD = 40;
 
     public static final int MAX_SEVERITY = 10;
-
-    private static final AtomicInteger ID_SEQUENCE = new AtomicInteger(1000);
+    private static final AtomicInteger ID_COUNTER = new AtomicInteger(1000);
 
     private final String patientId;
+    private final String historyRecordId;
     private final String name;
     private final int age;
     private final LocalDateTime admissionTime;
@@ -39,14 +39,48 @@ public class Patient implements Comparable<Patient> {
     private volatile MedicalStaff assignedStaff;
 
     public Patient(String name, int age, List<String> symptoms) {
-        this.patientId = "P-" + ID_SEQUENCE.getAndIncrement();
+        this(name, age, symptoms, null);
+    }
+
+    public Patient(String name, int age, List<String> symptoms, String historyRecordId) {
+        this(null, historyRecordId, name, age, symptoms, 1);
+    }
+
+    public Patient(String patientId, String historyRecordId, String name, int age,
+                   List<String> symptoms, int severityScore) {
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("Patient name is required.");
+        }
+        if (age < 0 || age > 130) {
+            throw new IllegalArgumentException("Patient age must be between 0 and 130.");
+        }
+        if (symptoms == null) {
+            throw new IllegalArgumentException("Patient symptoms must not be null.");
+        }
+        this.patientId = patientId == null || patientId.isBlank()
+                ? "P-" + ID_COUNTER.getAndIncrement()
+                : patientId;
+        advanceIdCounter(this.patientId);
+        this.historyRecordId = historyRecordId == null || historyRecordId.isBlank()
+            ? this.patientId
+            : historyRecordId;
         this.name = name;
         this.age = age;
         this.admissionTime = LocalDateTime.now();
         this.medicalRecord = new MedicalRecord(symptoms);
         this.vitals = new VitalSigns();
         this.state = PatientState.ADMITTED;
-        this.severityScore = 1;
+        this.severityScore = Math.max(1, Math.min(MAX_SEVERITY, severityScore));
+    }
+
+    private static void advanceIdCounter(String patientId) {
+        if (!patientId.startsWith("P-")) return;
+        try {
+            int nextId = Integer.parseInt(patientId.substring(2)) + 1;
+            ID_COUNTER.accumulateAndGet(nextId, Math::max);
+        } catch (NumberFormatException ignored) {
+            // Imported IDs that are not numeric do not affect generated IDs.
+        }
     }
 
     /* =====================================================================
@@ -217,6 +251,7 @@ public class Patient implements Comparable<Patient> {
     /* ===================================================================== */
 
     public String getPatientId() { return patientId; }
+    public String getHistoryRecordId() { return historyRecordId; }
     public String getName() { return name; }
     public int getAge() { return age; }
     public LocalDateTime getAdmissionTime() { return admissionTime; }
