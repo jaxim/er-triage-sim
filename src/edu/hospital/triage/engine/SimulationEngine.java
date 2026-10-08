@@ -116,6 +116,52 @@ public class SimulationEngine {
         }
     }
 
+    public synchronized void reloadPatientsFromDatabase() {
+        if (!db.isAvailable()) {
+            allPatients.clear();
+            return;
+        }
+
+        allPatients.clear();
+        for (String row : db.getPatientRows()) {
+            String[] parts = row.split("\\|", -1);
+            if (parts.length < 6) {
+                continue;
+            }
+            String patientId = parts[0].trim();
+            String name = parts[1].trim();
+            int age;
+            int severity;
+            try {
+                age = Integer.parseInt(parts[2].trim());
+                severity = Integer.parseInt(parts[3].trim());
+            } catch (NumberFormatException e) {
+                continue;
+            }
+
+            String stateText = parts[4].trim();
+            String assignedStaffName = parts[5].trim();
+            Patient patient = new Patient(patientId, patientId, name, age, List.of(), severity);
+            if (!stateText.isBlank()) {
+                try {
+                    PatientState persistedState = PatientState.valueOf(stateText);
+                    patient.setState(persistedState);
+                } catch (IllegalArgumentException ignored) {
+                    patient.setState(PatientState.WAITING);
+                }
+            }
+            if (!assignedStaffName.isBlank()) {
+                for (Doctor doctor : doctors) {
+                    if (doctor.getName().equalsIgnoreCase(assignedStaffName)) {
+                        patient.setAssignedStaff(doctor);
+                        break;
+                    }
+                }
+            }
+            allPatients.add(patient);
+        }
+    }
+
     /* ------------------------------------------------------------------ */
     /* Admission + triage                                                  */
     /* ------------------------------------------------------------------ */
@@ -289,6 +335,7 @@ public class SimulationEngine {
             for (Doctor d : doctors) {
                 if (!d.isBusy()) {
                     d.setBusy(true);
+                    db.upsertStaffRecord(d.getStaffId(), d.getName(), d.getRole(), d.getSpecialty(), true, true);
                     forPatient.setAssignedStaff(d);
                     return d;
                 }
@@ -303,9 +350,57 @@ public class SimulationEngine {
         dispatchLock.lock();
         try {
             d.setBusy(false);
+            db.upsertStaffRecord(d.getStaffId(), d.getName(), d.getRole(), d.getSpecialty(), false, true);
         } finally {
             dispatchLock.unlock();
         }
+    }
+
+    public synchronized String assignDoctorToPatient(String patientId, String doctorName) {
+        if (patientId == null || patientId.isBlank()) {
+            return "Select a patient first.";
+        }
+        if (doctorName == null || doctorName.isBlank()) {
+            return "Select a doctor first.";
+        }
+
+        Patient patient = null;
+        for (Patient candidate : allPatients) {
+            if (candidate.getPatientId().equals(patientId)) {
+                patient = candidate;
+                break;
+            }
+        }
+        if (patient == null) {
+            DatabaseManager.PatientRecord record = db.getPatientRecord(patientId);
+            if (record == null) {
+                return "Patient record not found.";
+            }
+            patient = new Patient(record.getPatientId(), record.getProfileId(), record.getName(),
+                    record.getAge(), List.of(), record.getSeverity());
+            patient.transitionTo(PatientState.WAITING);
+            allPatients.add(patient);
+        }
+
+        Doctor doctor = null;
+        for (Doctor candidate : doctors) {
+            if (candidate.getName().equalsIgnoreCase(doctorName.trim())) {
+                doctor = candidate;
+                break;
+            }
+        }
+        if (doctor == null) {
+            return "Doctor not found: " + doctorName;
+        }
+
+        patient.setAssignedStaff(doctor);
+        doctor.setBusy(true);
+        db.upsertStaffRecord(doctor.getStaffId(), doctor.getName(), doctor.getRole(), doctor.getSpecialty(), true, true);
+        db.upsertPatientRecord(patient);
+        db.addAuditEvent("Doctor assigned: " + doctor.getName() + " -> " + patient.getPatientId());
+        log("ADMIN: assigned " + doctor.getName() + " to " + patient.getPatientId());
+        refreshCallback.run();
+        return doctor.getName() + " assigned to " + patient.getPatientId() + ".";
     }
 
     /** GUI action: treat the highest-priority patient in the waiting room. */

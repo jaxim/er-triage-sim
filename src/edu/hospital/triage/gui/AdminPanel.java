@@ -9,6 +9,7 @@ import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
+import javax.swing.JComboBox;
 import javax.swing.JTabbedPane;
 import javax.swing.JTable;
 import javax.swing.JTextArea;
@@ -66,6 +67,9 @@ public class AdminPanel extends JFrame {
     private final JTextField patientSeverityField = new JTextField();
     private final JTextField patientStateField = new JTextField();
     private final JTextField patientAssignedStaffField = new JTextField();
+
+    private final JComboBox<String> patientAssignCombo = new JComboBox<>();
+    private final JComboBox<String> doctorAssignCombo = new JComboBox<>();
 
     private final JTextArea analyticsArea = new JTextArea(18, 55);
 
@@ -188,28 +192,41 @@ public class AdminPanel extends JFrame {
         form.add(patientAssignedStaffField);
         styleFormLabels(form);
 
-        JPanel actions = new JPanel(new GridLayout(1, 5, 10, 10));
+        JPanel assignmentPanel = new JPanel(new GridLayout(1, 4, 12, 12));
+        assignmentPanel.setOpaque(false);
+        assignmentPanel.setBorder(sectionBorder("Assign doctor"));
+        assignmentPanel.add(new JLabel("Patient:"));
+        assignmentPanel.add(patientAssignCombo);
+        assignmentPanel.add(new JLabel("Doctor:"));
+        assignmentPanel.add(doctorAssignCombo);
+        styleFormLabels(assignmentPanel);
+
+        JPanel actions = new JPanel(new GridLayout(1, 6, 10, 10));
         actions.setOpaque(false);
         JButton addBtn = new JButton("Add / Save");
         JButton selectBtn = new JButton("Load Selected");
+        JButton assignBtn = new JButton("Assign Doctor");
         JButton waitingBtn = new JButton("Return to Waiting");
         JButton deleteBtn = new JButton("Delete");
         JButton refreshBtn = new JButton("Refresh");
 
         styleButton(addBtn);
         styleButton(selectBtn);
+        styleButton(assignBtn);
         styleButton(waitingBtn);
         styleButton(deleteBtn);
         styleButton(refreshBtn);
 
         addBtn.addActionListener(e -> savePatient());
         selectBtn.addActionListener(e -> loadSelectedPatientRow());
+        assignBtn.addActionListener(e -> assignSelectedDoctorToPatient());
         waitingBtn.addActionListener(e -> returnSelectedPatientToWaitingRoom());
         deleteBtn.addActionListener(e -> deleteSelectedPatient());
         refreshBtn.addActionListener(e -> refreshAll());
 
         actions.add(addBtn);
         actions.add(selectBtn);
+        actions.add(assignBtn);
         actions.add(waitingBtn);
         actions.add(deleteBtn);
         actions.add(refreshBtn);
@@ -223,8 +240,13 @@ public class AdminPanel extends JFrame {
             }
         });
 
+        JPanel tablePanel = new JPanel(new BorderLayout(8, 8));
+        tablePanel.setOpaque(false);
+        tablePanel.add(assignmentPanel, BorderLayout.NORTH);
+        tablePanel.add(styleScrollPane(new JScrollPane(patientTable)), BorderLayout.CENTER);
+
         panel.add(form, BorderLayout.NORTH);
-        panel.add(styleScrollPane(new JScrollPane(patientTable)), BorderLayout.CENTER);
+        panel.add(tablePanel, BorderLayout.CENTER);
         panel.add(actions, BorderLayout.SOUTH);
         return panel;
     }
@@ -327,9 +349,42 @@ public class AdminPanel extends JFrame {
     }
 
     private void refreshAll() {
+        engine.reloadStaffFromDatabase();
+        engine.reloadPatientsFromDatabase();
         loadStaffTable();
         loadPatientTable();
+        populateAssignmentCombos();
         analyticsArea.setText(engine.getDb().analyticsSummary());
+    }
+
+    private void populateAssignmentCombos() {
+        patientAssignCombo.removeAllItems();
+        doctorAssignCombo.removeAllItems();
+
+        for (String row : engine.getDb().getPatientRows()) {
+            String[] parts = row.split("\\|", -1);
+            if (parts.length >= 2) {
+                patientAssignCombo.addItem(parts[0] + " - " + parts[1]);
+            }
+        }
+
+        for (String row : engine.getDb().getStaffRows()) {
+            String[] parts = row.split("\\|", -1);
+            if (parts.length >= 4) {
+                String role = parts[2];
+                String name = parts[1];
+                if ("Doctor".equalsIgnoreCase(role) || "AttendingPhysician".equalsIgnoreCase(role)) {
+                    doctorAssignCombo.addItem(name);
+                }
+            }
+        }
+
+        if (patientAssignCombo.getItemCount() == 0) {
+            patientAssignCombo.addItem("No patients");
+        }
+        if (doctorAssignCombo.getItemCount() == 0) {
+            doctorAssignCombo.addItem("No doctors");
+        }
     }
 
     private void loadStaffTable() {
@@ -436,6 +491,44 @@ public class AdminPanel extends JFrame {
         engine.getDb().deletePatientRecord(patientId);
         refreshAll();
         clearPatientForm();
+    }
+
+    private void assignSelectedDoctorToPatient() {
+        String patientSelection = (String) patientAssignCombo.getSelectedItem();
+        String doctorSelection = (String) doctorAssignCombo.getSelectedItem();
+
+        if (patientSelection == null || patientSelection.isBlank() || "No patients".equals(patientSelection)) {
+            int patientRow = patientTable.getSelectedRow();
+            if (patientRow < 0) {
+                JOptionPane.showMessageDialog(this, "Select a patient first.", "Assign doctor", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            patientSelection = (String) patientModel.getValueAt(patientRow, 0);
+        } else {
+            int separatorIndex = patientSelection.indexOf(" - ");
+            if (separatorIndex > 0) {
+                patientSelection = patientSelection.substring(0, separatorIndex);
+            }
+        }
+
+        if (doctorSelection == null || doctorSelection.isBlank() || "No doctors".equals(doctorSelection)) {
+            int staffRow = staffTable.getSelectedRow();
+            if (staffRow < 0) {
+                JOptionPane.showMessageDialog(this, "Select a doctor first.", "Assign doctor", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            String role = (String) staffModel.getValueAt(staffRow, 2);
+            if (!"Doctor".equalsIgnoreCase(role) && !"AttendingPhysician".equalsIgnoreCase(role)) {
+                JOptionPane.showMessageDialog(this, "Only doctors can be assigned to patients.", "Assign doctor", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            doctorSelection = (String) staffModel.getValueAt(staffRow, 1);
+        }
+
+        String result = engine.assignDoctorToPatient(patientSelection, doctorSelection);
+        patientAssignedStaffField.setText(doctorSelection);
+        JOptionPane.showMessageDialog(this, result, "Assign doctor", JOptionPane.INFORMATION_MESSAGE);
+        refreshAll();
     }
 
     private void returnSelectedPatientToWaitingRoom() {

@@ -228,6 +228,14 @@ public class Patient implements Comparable<Patient> {
         state = next;
     }
 
+    /** Restores a persisted state without replaying the full state-machine path. */
+    public synchronized void setState(PatientState next) {
+        if (next == null) {
+            return;
+        }
+        this.state = next;
+    }
+
     /** Emergency protocols may force CRITICAL_CARE from any live state. */
     public synchronized void forceCriticalCare() {
         if (state != PatientState.DISCHARGED && state != PatientState.DECEASED) {

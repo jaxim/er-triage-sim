@@ -45,7 +45,7 @@ public class AdminLoginDialog extends JDialog {
         title.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 26));
         title.setForeground(new Color(241, 245, 249));
 
-        JLabel subtitle = new JLabel("Secure access portal");
+        JLabel subtitle = new JLabel("Default: admin / admin123");
         subtitle.setHorizontalAlignment(JLabel.CENTER);
         subtitle.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 13));
         subtitle.setForeground(new Color(148, 163, 184));
@@ -94,6 +94,7 @@ public class AdminLoginDialog extends JDialog {
         add(actions, BorderLayout.SOUTH);
 
         usernameField.setText("admin");
+        passwordField.setText("admin123");
     }
 
     private void styleButton(JButton button, Color bg, Color fg) {

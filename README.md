@@ -54,20 +54,22 @@ Requires JDK 11+.
 
 ```
 javac -d out $(find src -name '*.java')          # Linux/macOS
-java  -cp "out:lib/sqlite-jdbc.jar" edu.hospital.triage.Main
+java  -cp "out:lib/*" edu.hospital.triage.Main
 ```
 
 Windows (PowerShell):
+
 ```
 javac -d out (Get-ChildItem -Recurse src -Filter *.java).FullName
-java  -cp "out;lib\sqlite-jdbc.jar" edu.hospital.triage.Main
+java  -cp "out;lib\*" edu.hospital.triage.Main
 ```
 
-### SQLite driver
-Download `sqlite-jdbc-<version>.jar` from https://github.com/xerial/sqlite-jdbc/releases
-into `lib/`. Without it the simulation still runs — persistence just logs a warning and
-the shift report states no data is available. The database file `er_triage.db` is created
-in the working directory.
+### SQLite driver and logging jars
+
+The project expects the full library set in `lib/`, including SQLite JDBC and SLF4J.
+Using `lib/*` ensures both are on the classpath. Without them the simulation still runs,
+but persistence is disabled and the app logs a warning instead of saving/loading data.
+The database file `er_triage.db` is created in the working directory.
 
 ## Using the dashboard
 
